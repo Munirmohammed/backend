@@ -1,5 +1,7 @@
 import express from 'express'
 import {
+  changePassword,
+  forgotPassword,
   getUser,
   loginStatus,
   loginUser,
@@ -15,6 +17,8 @@ router.post('/login', loginUser)
 router.post('/logout', logout)
 router.post('/getuser', protect, getUser)
 router.get('/loggedin', loginStatus)
-router.patch('/updateuser', updateUser)
+router.patch('/updateuser', protect, updateUser)
+router.patch('/changepassword', protect, changePassword)
+router.post('/forgotpassword', forgotPassword)
 
 export default router

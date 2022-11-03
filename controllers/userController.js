@@ -2,6 +2,9 @@ import asyncHandler from 'express-async-handler'
 import User from '../models/userModel.js'
 import jwt from 'jsonwebtoken'
 import bcrpt from 'bcryptjs'
+import Token from '../models/tokenModel.js'
+import crypto from 'crypto'
+import { sendEmail } from '../utils/sendEmail.js'
 
 const generateToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_SECRET, { expiresIn: '1d' })
@@ -43,7 +46,7 @@ export const registerUser = asyncHandler(async (req, res) => {
     httpOnly: true,
     expires: new Date(Date.now() + 1000 * 86400), // 1 day
     sameSite: 'none',
-    secure: false,
+    // secure: false,
   })
 
   if (user) {
@@ -80,7 +83,7 @@ export const loginUser = asyncHandler(async (req, res) => {
     httpOnly: true,
     expires: new Date(Date.now() + 1000 * 86400), // 1 day
     sameSite: 'none',
-    secure: false,
+    // secure: false,
   })
 
   if (user && passwordIsCorrect) {
@@ -99,7 +102,7 @@ export const logout = asyncHandler(async (req, res) => {
     httpOnly: true,
     expires: new Date(0),
     sameSite: 'none',
-    secure: false,
+    // secure: false,
   })
   return res.status(200).json({ message: 'Successfully Logged Out' })
 })
@@ -131,5 +134,108 @@ export const loginStatus = asyncHandler(async (req, res) => {
 })
 
 export const updateUser = asyncHandler(async (req, res) => {
-  res.send('User Update')
+  const user = await User.findById(req.user._id)
+
+  if (user) {
+    const { name, email, photo, phone, bio } = user
+    user.email = email
+    user.name = req.body.name || name
+    user.phone = req.body.phone || phone
+    user.bio = req.body.bio || bio
+    user.photo = req.body.photo || photo
+
+    const updatedUser = await user.save()
+
+    res.status(200).json({
+      _id: updatedUser._id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      photo: updatedUser.photo,
+      phone: updatedUser.phone,
+      bio: updatedUser.bio,
+    })
+  } else {
+    res.status(404)
+    throw new Error('User not found')
+  }
+})
+
+export const changePassword = asyncHandler(async (req, res) => {
+  const user = await User.findById(req.user._id)
+
+  const { oldPassword, newPassword } = req.body
+
+  if (!user) {
+    res.status(400)
+    throw new Error('User not found, Please Sign Up')
+  }
+
+  if (!oldPassword || !newPassword) {
+    res.status(400)
+    throw new Error('Please enter old and new password')
+  }
+
+  const correctPassword = await bcrpt.compare(oldPassword, user.password)
+
+  if (user && correctPassword) {
+    user.password = newPassword
+    await user.save()
+    res.status(200).send('Password updated successfully')
+  } else {
+    res.status(400)
+    throw new Error('Old Password is incorrect')
+  }
+})
+
+export const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body
+
+  const user = await User.findOne({ email })
+
+  if (!user) {
+    res.status(404)
+    throw new Error('User does not exist')
+  }
+
+  let token = await Token.findOne({ userId: user._id })
+  if (token) {
+    await token.deleteOne()
+  }
+
+  let resetToken = crypto.randomBytes(32).toString('hex') + user._id
+
+  const hashedToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex')
+
+  await new Token({
+    userId: user._id,
+    token: hashedToken,
+    createdAt: Date.now(),
+    expiresAt: Date.now() + 30 * (60 * 1000), //30 mins
+  }).save()
+
+  const resetUrl = `${process.env.FRONTEND_URL}/resetpassword/${resetToken}`
+
+  const message = `
+    <h2>Hello ${user.name}</h2>
+    <p>Please use the url below to reset your password</p>
+    <p>This reset link is valid for only <b>30 minutes</b></p>
+    <a href=${resetUrl} clicktracking=off>${resetUrl}</a>
+    <p>Regards ...</p>
+    <p>MunInvent Munir Corporations</p>
+    `
+  const subject = 'Password reset request'
+  const send_to = user.email
+  const sent_from = process.env.EMAIL_USER
+
+  try {
+    await sendEmail(subject, message, send_to, sent_from)
+    res.status(200).json({ success: true, message: 'Reset Email Sent' })
+  } catch (error) {
+    console.log(error)
+    res.status(500)
+    throw new Error('Email not sent, Please try again: ')
+  }
 })
