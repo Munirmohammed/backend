@@ -7,6 +7,7 @@ import {
   loginUser,
   logout,
   registerUser,
+  resetPassword,
   updateUser,
 } from '../controllers/userController.js'
 import { protect } from '../middleware/authMiddleware.js'
@@ -20,5 +21,6 @@ router.get('/loggedin', loginStatus)
 router.patch('/updateuser', protect, updateUser)
 router.patch('/changepassword', protect, changePassword)
 router.post('/forgotpassword', forgotPassword)
+router.put('/resetpassword/:resetToken', resetPassword)
 
 export default router

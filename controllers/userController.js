@@ -203,6 +203,7 @@ export const forgotPassword = asyncHandler(async (req, res) => {
   }
 
   let resetToken = crypto.randomBytes(32).toString('hex') + user._id
+  console.log(resetToken)
 
   const hashedToken = crypto
     .createHash('sha256')
@@ -236,6 +237,31 @@ export const forgotPassword = asyncHandler(async (req, res) => {
   } catch (error) {
     console.log(error)
     res.status(500)
-    throw new Error('Email not sent, Please try again: ')
+    throw new Error('Email not sent, Please try again! ')
   }
+})
+
+export const resetPassword = asyncHandler(async (req, res) => {
+  const { password } = req.body
+  const { resetToken } = req.params
+
+  const hashedToken = crypto
+    .createHash('sha256')
+    .update(resetToken)
+    .digest('hex')
+
+  const userToken = await Token.findOne({
+    token: hashedToken,
+    expiresAt: { $gt: Date.now() },
+  })
+
+  if (!userToken) {
+    res.status(404)
+    throw new Error('Invalid or Expired Token')
+  }
+
+  const user = await User.findOne({ _id: userToken.userId })
+  user.password = password
+  await user.save()
+  res.status(200).json({ message: 'Password reset Successful, Please Login' })
 })
